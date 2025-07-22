@@ -15,6 +15,7 @@ import {
   Fade,
   Backdrop,
   useTheme,
+  FormHelperText,
 } from '@mui/material';
 import {
   Add,
@@ -24,45 +25,44 @@ import {
   Flag,
   Close,
 } from '@mui/icons-material';
+import { Formik, Form, Field } from 'formik';
+import * as Yup from 'yup';
 import { useTodoContext } from '../../contexts/TodoContext';
 import { PRIORITY_LEVELS, PRIORITY_LABELS } from '../../utils/constants';
+
+// Validation Schema với Yup
+const todoValidationSchema = Yup.object({
+  title: Yup.string()
+    .required('Tiêu đề công việc là bắt buộc')
+    .min(3, 'Tiêu đề phải có ít nhất 3 ký tự')
+    .max(100, 'Tiêu đề không được vượt quá 100 ký tự')
+    .trim('Tiêu đề không được chứa khoảng trắng ở đầu/cuối'),
+  
+  description: Yup.string()
+    .max(500, 'Mô tả không được vượt quá 500 ký tự')
+    .trim(),
+  
+  priority: Yup.string()
+    .oneOf(Object.values(PRIORITY_LEVELS), 'Mức độ ưu tiên không hợp lệ')
+    .required('Vui lòng chọn mức độ ưu tiên'),
+  
+  dueDate: Yup.date()
+    .nullable()
+    .min(new Date(), 'Ngày hạn phải là ngày trong tương lai')
+    .typeError('Ngày hạn không hợp lệ'),
+});
 
 const TodoForm = () => {
   const theme = useTheme();
   const { addTodo } = useTodoContext();
   const [open, setOpen] = useState(false);
-  const [formData, setFormData] = useState({
+
+  // Initial values cho Formik
+  const initialValues = {
     title: '',
     description: '',
     priority: PRIORITY_LEVELS.MEDIUM,
     dueDate: '',
-  });
-
-  const handleChange = (field) => (event) => {
-    setFormData({
-      ...formData,
-      [field]: event.target.value,
-    });
-  };
-
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    if (!formData.title.trim()) return;
-
-    addTodo({
-      title: formData.title.trim(),
-      description: formData.description.trim(),
-      priority: formData.priority,
-      dueDate: formData.dueDate || null,
-    });
-
-    setFormData({
-      title: '',
-      description: '',
-      priority: PRIORITY_LEVELS.MEDIUM,
-      dueDate: '',
-    });
-    setOpen(false);
   };
 
   const handleOpen = () => {
@@ -73,13 +73,22 @@ const TodoForm = () => {
     setOpen(false);
   };
 
-  const clearForm = () => {
-    setFormData({
-      title: '',
-      description: '',
-      priority: PRIORITY_LEVELS.MEDIUM,
-      dueDate: '',
-    });
+  const handleSubmit = (values, { setSubmitting, resetForm }) => {
+    try {
+      addTodo({
+        title: values.title.trim(),
+        description: values.description.trim(),
+        priority: values.priority,
+        dueDate: values.dueDate || null,
+      });
+
+      resetForm();
+      setOpen(false);
+    } catch (error) {
+      console.error('Error adding todo:', error);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const getPriorityColor = (priority) => {
@@ -180,7 +189,7 @@ const TodoForm = () => {
         </Box>
       </Paper>
 
-      {/* Modal Form */}
+      {/* Modal Form với Formik */}
       <Modal
         open={open}
         onClose={handleClose}
@@ -286,183 +295,214 @@ const TodoForm = () => {
                 </IconButton>
               </Box>
 
-              {/* Modal Content */}
+              {/* Modal Content với Formik */}
               <Box sx={{ px: 3, pb: 3 }}>
-                <form onSubmit={handleSubmit}>
-                  <Grid container spacing={3}>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        label="Tiêu đề công việc"
-                        value={formData.title}
-                        onChange={handleChange('title')}
-                        required
-                        autoFocus
-                        variant="outlined"
-                        InputProps={{
-                          startAdornment: (
-                            <Assignment
-                              sx={{
-                                color: theme.palette.text.secondary,
-                                mr: 1,
-                                ml: 1,
-                              }}
-                            />
-                          ),
-                        }}
-                        sx={{
-                          '& .MuiOutlinedInput-root': {
-                            borderRadius: 2,
-                            backgroundColor: theme.palette.background.paper,
-                            '&:hover fieldset': {
-                              borderColor: theme.palette.primary.main,
-                            },
-                          },
-                        }}
-                      />
-                    </Grid>
-
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        label="Mô tả (tùy chọn)"
-                        value={formData.description}
-                        onChange={handleChange('description')}
-                        multiline
-                        rows={3}
-                        variant="outlined"
-                        sx={{
-                          '& .MuiOutlinedInput-root': {
-                            borderRadius: 2,
-                            backgroundColor: theme.palette.background.paper,
-                          },
-                        }}
-                      />
-                    </Grid>
-
-                    <Grid item xs={12} sm={6}>
-                      <FormControl fullWidth>
-                        <InputLabel>Mức độ ưu tiên</InputLabel>
-                        <Select
-                          value={formData.priority}
-                          onChange={handleChange('priority')}
-                          label="Mức độ ưu tiên"
-                          startAdornment={
-                            <Flag
-                              sx={{
-                                color: getPriorityColor(formData.priority),
-                                ml: 1,
-                                mr: 1,
-                              }}
-                            />
-                          }
-                          sx={{
-                            borderRadius: 2,
-                            backgroundColor: theme.palette.background.paper,
-                            '& .MuiOutlinedInput-notchedOutline': {
-                              borderRadius: 2,
-                            },
-                          }}
-                        >
-                          {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-                            <MenuItem key={value} value={value}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Flag
+                <Formik
+                  initialValues={initialValues}
+                  validationSchema={todoValidationSchema}
+                  onSubmit={handleSubmit}
+                  validateOnChange={true}
+                  validateOnBlur={true}
+                >
+                  {({ values, errors, touched, handleChange, handleBlur, isSubmitting, resetForm, isValid }) => (
+                    <Form>
+                      <Grid container spacing={3}>
+                        <Grid item xs={12}>
+                          <TextField
+                            fullWidth
+                            name="title"
+                            label="Tiêu đề công việc"
+                            value={values.title}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            error={touched.title && Boolean(errors.title)}
+                            helperText={touched.title && errors.title}
+                            required
+                            autoFocus
+                            variant="outlined"
+                            InputProps={{
+                              startAdornment: (
+                                <Assignment
                                   sx={{
-                                    color: getPriorityColor(value),
-                                    fontSize: 16,
+                                    color: theme.palette.text.secondary,
+                                    mr: 1,
+                                    ml: 1,
                                   }}
                                 />
-                                {label}
-                              </Box>
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </Grid>
+                              ),
+                            }}
+                            sx={{
+                              '& .MuiOutlinedInput-root': {
+                                borderRadius: 2,
+                                backgroundColor: theme.palette.background.paper,
+                                '&:hover fieldset': {
+                                  borderColor: theme.palette.primary.main,
+                                },
+                              },
+                            }}
+                          />
+                        </Grid>
 
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label="Ngày hạn"
-                        type="date"
-                        value={formData.dueDate}
-                        onChange={handleChange('dueDate')}
-                        InputLabelProps={{
-                          shrink: true,
-                        }}
-                        InputProps={{
-                          startAdornment: (
-                            <CalendarToday
+                        <Grid item xs={12}>
+                          <TextField
+                            fullWidth
+                            name="description"
+                            label="Mô tả (tùy chọn)"
+                            value={values.description}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            error={touched.description && Boolean(errors.description)}
+                            helperText={touched.description && errors.description}
+                            multiline
+                            rows={3}
+                            variant="outlined"
+                            sx={{
+                              '& .MuiOutlinedInput-root': {
+                                borderRadius: 2,
+                                backgroundColor: theme.palette.background.paper,
+                              },
+                            }}
+                          />
+                        </Grid>
+
+                        <Grid item xs={12} sm={6}>
+                          <FormControl 
+                            fullWidth 
+                            error={touched.priority && Boolean(errors.priority)}
+                          >
+                            <InputLabel>Mức độ ưu tiên</InputLabel>
+                            <Select
+                              name="priority"
+                              value={values.priority}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                              label="Mức độ ưu tiên"
+                              startAdornment={
+                                <Flag
+                                  sx={{
+                                    color: getPriorityColor(values.priority),
+                                    ml: 1,
+                                    mr: 1,
+                                  }}
+                                />
+                              }
                               sx={{
-                                color: theme.palette.text.secondary,
-                                mr: 1,
-                                ml: 1,
-                                fontSize: 20,
+                                borderRadius: 2,
+                                backgroundColor: theme.palette.background.paper,
+                                '& .MuiOutlinedInput-notchedOutline': {
+                                  borderRadius: 2,
+                                },
                               }}
-                            />
-                          ),
-                        }}
-                        sx={{
-                          '& .MuiOutlinedInput-root': {
-                            borderRadius: 2,
-                            backgroundColor: theme.palette.background.paper,
-                          },
-                        }}
-                      />
-                    </Grid>
+                            >
+                              {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+                                <MenuItem key={value} value={value}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Flag
+                                      sx={{
+                                        color: getPriorityColor(value),
+                                        fontSize: 16,
+                                      }}
+                                    />
+                                    {label}
+                                  </Box>
+                                </MenuItem>
+                              ))}
+                            </Select>
+                            {touched.priority && errors.priority && (
+                              <FormHelperText>{errors.priority}</FormHelperText>
+                            )}
+                          </FormControl>
+                        </Grid>
 
-                    <Grid item xs={12}>
-                      <Box sx={{ display: 'flex', gap: 2, mt: 2, justifyContent: 'flex-end' }}>
-                        <Button
-                          variant="outlined"
-                          size="large"
-                          startIcon={<Clear />}
-                          onClick={clearForm}
-                          sx={{
-                            borderRadius: 2,
-                            textTransform: 'none',
-                            fontWeight: 600,
-                            px: 3,
-                            py: 1.5,
-                            borderWidth: 2,
-                            '&:hover': {
-                              borderWidth: 2,
-                            },
-                          }}
-                        >
-                          Xóa form
-                        </Button>
-                        <Button
-                          type="submit"
-                          variant="contained"
-                          size="large"
-                          startIcon={<Add />}
-                          disabled={!formData.title.trim()}
-                          sx={{
-                            borderRadius: 2,
-                            textTransform: 'none',
-                            fontWeight: 600,
-                            px: 4,
-                            py: 1.5,
-                            background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
-                            boxShadow: theme.shadows[3],
-                            '&:hover': {
-                              background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 100%)`,
-                              transform: 'translateY(-1px)',
-                              boxShadow: theme.shadows[6],
-                            },
-                            '&:disabled': {
-                              background: theme.palette.action.disabledBackground,
-                            },
-                          }}
-                        >
-                          Thêm công việc
-                        </Button>
-                      </Box>
-                    </Grid>
-                  </Grid>
-                </form>
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            name="dueDate"
+                            label="Ngày hạn"
+                            type="date"
+                            value={values.dueDate}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            error={touched.dueDate && Boolean(errors.dueDate)}
+                            helperText={touched.dueDate && errors.dueDate}
+                            InputLabelProps={{
+                              shrink: true,
+                            }}
+                            InputProps={{
+                              startAdornment: (
+                                <CalendarToday
+                                  sx={{
+                                    color: theme.palette.text.secondary,
+                                    mr: 1,
+                                    ml: 1,
+                                    fontSize: 20,
+                                  }}
+                                />
+                              ),
+                            }}
+                            sx={{
+                              '& .MuiOutlinedInput-root': {
+                                borderRadius: 2,
+                                backgroundColor: theme.palette.background.paper,
+                              },
+                            }}
+                          />
+                        </Grid>
+
+                        <Grid item xs={12}>
+                          <Box sx={{ display: 'flex', gap: 2, mt: 2, justifyContent: 'flex-end' }}>
+                            <Button
+                              variant="outlined"
+                              size="large"
+                              startIcon={<Clear />}
+                              onClick={() => resetForm()}
+                              disabled={isSubmitting}
+                              sx={{
+                                borderRadius: 2,
+                                textTransform: 'none',
+                                fontWeight: 600,
+                                px: 3,
+                                py: 1.5,
+                                borderWidth: 2,
+                                '&:hover': {
+                                  borderWidth: 2,
+                                },
+                              }}
+                            >
+                              Xóa form
+                            </Button>
+                            <Button
+                              type="submit"
+                              variant="contained"
+                              size="large"
+                              startIcon={<Add />}
+                              disabled={isSubmitting || !isValid || !values.title.trim()}
+                              sx={{
+                                borderRadius: 2,
+                                textTransform: 'none',
+                                fontWeight: 600,
+                                px: 4,
+                                py: 1.5,
+                                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
+                                boxShadow: theme.shadows[3],
+                                '&:hover': {
+                                  background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 100%)`,
+                                  transform: 'translateY(-1px)',
+                                  boxShadow: theme.shadows[6],
+                                },
+                                '&:disabled': {
+                                  background: theme.palette.action.disabledBackground,
+                                },
+                              }}
+                            >
+                              {isSubmitting ? 'Đang thêm...' : 'Thêm công việc'}
+                            </Button>
+                          </Box>
+                        </Grid>
+                      </Grid>
+                    </Form>
+                  )}
+                </Formik>
               </Box>
             </Paper>
           </Box>
